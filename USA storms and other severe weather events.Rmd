@@ -1,0 +1,192 @@
+---
+title: The Analysis of the health and economic impact of storms and other severe weather
+  events in the USA from 1950 to 2011
+author: "Franklin Dono"
+date: "10/24/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+### Executive summary
+
+This document studies the health and economic impact of storms and other severe weather events that occurred in the United States of America from 1950 to 2011. It explores data from <https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2>, which is the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. It ranks and isolates the top 10% of weather events that have the worst economic and population health impact. For the purposes of this exercise population-health-impact of an event is measured by the sum of the number of fatalities and injuries resulting directly or indirectly from the event. Economic impact on the other hand is measured by the sum of the cost of damages to property and crops.
+
+The study identified 22 storm weather events with the worst population-health impact and 13 storm weather events with the worst economic impact over the period of study. Overall, Tornado have had the worst effect on population health over the period with 96,979 fatalities and injuries and cost of flood related damages to property and crops is at least 138 billion us dollars. 
+
+### Data processing
+Using R version 4.0.2, load the following libraries; dplyr, ggplot2 and lubridate for the analysis:
+
+```{r Loading Libraries, echo=TRUE}
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+```
+
+Download and read the data from source <https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2>. It is important to check first to ensure that a copy of the data is not already downloaded into the working directory. The data consist of 903871 observations of 37 variables
+
+```{r downloading and reading data, echo=TRUE}
+
+## The source url to the data
+data.source <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+
+## Downloading data
+if(!file.exists("StormData.csv.bz2")){
+        download.file(data.source,"./StormData.csv.bz2")
+}
+
+## Reading data into R
+stormdata <- read.csv("StormData.csv.bz2")
+
+```
+
+For the purpose of assessing the top ranking harsh weather events in respect of their adverse impact on economic activities and population health a subset of the data relevant to the objectives was selected.
+
+```{r subseting, echo=TRUE}
+
+## Sub setting 
+stormdata = select(stormdata, REFNUM, BGN_DATE, STATE, EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP)
+
+head(tibble(stormdata))
+```
+The fields are:
+        REFNUM - Reference Number                       Injuries - Injuries
+        BGN_DATE - Beginning date                       PROPDMG - Property damage
+        STATE - State                                   PROPDMGEXP - Property damage exponent (e.g H - Hundred, K - Thousand)
+        EVTYPE - Event type                             CROPDMG - Crop damage
+        FATALITIES - Fatalities                         CROPDMG - Crop damage exponent (e.g M - Million, B - Billion)
+        
+        
+Transformations were applied to the "BGN_DATE" field format and "PROPDMGEXP" and "CROPDMGEXP" fields. The abbreviations H, K, M and B (not case sensitive) in the fields "PROPDMGEXP" and "CROPDMGEXP" were duly replaced by 100, 1000, 1000000 and 1000000000 respectively.
+
+```{r transformations, echo=TRUE}
+
+## Transformations 
+## Data and time fields
+stormdata$BGN_DATE <- as.Date(mdy_hms(stormdata$BGN_DATE))
+
+
+## PROPDMGEXP and CROPDMGEXP Fields
+for (i in c("H", "K", "M", "B", "h", "k", "m", "b")) {
+        if( i == "H" | i == "h"){
+                j = 100} else if ( i == "K" | i == "k"){
+                j = 1000
+                } else if ( i == "M" | i == "m"){
+                j = 1000000
+                } else if ( i == "B" | i == "b"){
+                j = 1000000000
+                } else {
+                
+        }
+stormdata$PROPDMGEXP <- gsub(i, j, stormdata$PROPDMGEXP)
+stormdata$CROPDMGEXP <- gsub(i, j, stormdata$CROPDMGEXP)
+}
+
+head(tibble(stormdata))
+
+```
+
+Other transformations were carried out on the data to make it easy to further transform and/or draw subsets
+
+```{r further transformations, echo=TRUE}
+
+## Health and economic value considerations
+stormdata$FATALITIES <- as.numeric(stormdata$FATALITIES)
+stormdata$INJURIES <- as.numeric(stormdata$INJURIES)
+stormdata$PROPDMG <- as.numeric(stormdata$PROPDMG)
+stormdata$CROPDMG <- as.numeric(stormdata$CROPDMG)
+stormdata$PROPDMGEXP <- as.numeric(stormdata$PROPDMGEXP)
+stormdata$CROPDMGEXP <- as.numeric(stormdata$CROPDMGEXP)
+
+```
+
+A subset was drawn for the purpose of of assessing the impact of the weather events on the population health across the United States. The data excluded fields from the previous subset "stormdata".  The excluded fields were "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP". An additional field labeled "HEALTHVALUE" (health value is equals to the sum of number of fatalities and injured) was added. All rows of data where the "HEALTHVALUE" field was set to NA is removed and same is applicable to fields where the "HEALTHVALUE" is either equal to zero (0) or less.
+
+```{r, extracting health dataset, echo=TRUE}
+ 
+## Sub setting health data
+healthdata <- select(stormdata, -PROPDMG, -PROPDMGEXP, -CROPDMG, -CROPDMGEXP)
+healthdata <- mutate(healthdata, HEALTHVALUE = FATALITIES + INJURIES)
+healthdata$HEALTHVALUE <- as.numeric(healthdata$HEALTHVALUE)
+healthdata <- filter(healthdata, is.na(HEALTHVALUE) == FALSE, HEALTHVALUE > 0)
+head(tibble(healthdata))
+```
+
+A subset was also drawn for the purpose of of assessing the economic impact of the weather events across the United States. The data excluded fields from the previous subset "stormdata".  The excluded fields were "FATALITIES" and "INJURIES". An additional field labeled "ECONOMICVALUE" (which is the sum of the damage to property and crops multiplied by their exponent) was added. All rows of data where the "ECONOMICVALUE" field was set to NA is removed and same is applicable to fields where the "ECONOMICVALUE" is either equal to zero (0) or less.
+
+```{r, extracting economic dataset, echo=TRUE}
+
+## Sub setting economic data
+economicdata <- select(stormdata, -FATALITIES, -INJURIES)
+economicdata <- mutate(economicdata, ECONOMICVALUE = PROPDMG*PROPDMGEXP + CROPDMG*CROPDMGEXP)
+economicdata$ECONOMICVALUE <- as.numeric(economicdata$ECONOMICVALUE)
+economicdata <- filter(economicdata, is.na(ECONOMICVALUE) == FALSE, ECONOMICVALUE > 0)
+head(tibble(economicdata))
+```
+
+### Data Analysis and Results
+
+#### Population health Impact
+
+In order to the determine the weather event with the most adverse impact on the population health, the health data set is arranged in descending order of HEALTHVALUE. Where there is a tie it is resolved by arranging the event type is ascending order (e.g A, B, C, ...Z). The table is subsequently grouped according to the event types and and summed across the impact value field. The weather events whose health value is above the 90% quantile are selected as the events with the most population health impacts.
+See table below:
+
+```{r table pop, echo=TRUE}
+
+## Impact Analysis
+healthimpact <- healthdata %>% group_by(EVTYPE) %>% summarise(IMPACT = sum(HEALTHVALUE)) %>% arrange(desc(IMPACT))
+p <- quantile(healthimpact$IMPACT, probs = 0.9)[[1]]
+healthimpact <- healthimpact[healthimpact$IMPACT > p, ]
+tibble(healthimpact)
+```
+
+See plot below:
+
+```{r, analysis and results 1, echo=TRUE}
+
+## plotting impact on population field
+g <- ggplot(data = healthimpact, aes(x = reorder(EVTYPE,IMPACT), y = IMPACT))
+g <- g + geom_bar(stat = "identity", colour = "black", fill = "darkred")
+g <- g + labs(title = "Top 10% of events with the worst population health impact:1950-2011")
+g <- g + theme(plot.title = element_text(hjust = 0.5))
+g <- g + labs(y = "Number of fatalities and injuries", x = "Event Type")
+g <- g + coord_flip()
+print(g)
+
+```
+
+#### Economic impact
+
+In order to the determine the weather event with the most adverse economic impact, the economic data set is arranged in descending order of ECONOMICVALUE. Where there is a tie it is resolved by arranging the event types is ascending order (e.g A, B, C, ...Z). The table is subsequently grouped according to the event types and summed across the impact value field. The weather events whose health value is above the 90% quantile are selected as the events with the most severe economic impact.
+See table below:
+```{r table econs, echo=TRUE}
+
+economicimpact <- economicdata %>% group_by(EVTYPE) %>% summarise(IMPACT = sum(ECONOMICVALUE)) %>% arrange(desc(IMPACT))
+p <- quantile(economicimpact$IMPACT, probs = 0.9)[[1]]
+economicimpact <- economicimpact[economicimpact$IMPACT > p, ]
+tibble(economicimpact)
+
+```
+See plot below:
+```{r analysis and results2, echo=TRUE}
+
+#plotting economic loss
+g <- ggplot(data = economicimpact, aes(x = reorder(EVTYPE, IMPACT), y = IMPACT))
+g <- g + geom_bar(stat = "identity", colour = "black", fill = "green")
+g <- g + labs(title = "Top 10% of events with worst economic impact:1950-2011")
+g <- g + theme(plot.title = element_text(hjust = 0.5))
+g <- g + labs(y = "Cost ($) of property and crop loss", x = "Event Type")
+g <- g + coord_flip()
+print(g)
+
+```
+
+### Conclusion
+
+There is, thus, 22 storm weather events with the worst population health impact and 13 storm events with the worst economic impact over the period 1950 to 2011.
